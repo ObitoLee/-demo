@@ -4,111 +4,148 @@
 #include <fstream>
 
 #define random(x) (rand()%x)
-#define WIDTH 1140
-#define HEIGHT 710
 
 using namespace std;
 using namespace cv;
 
-void ROI_AddImage(Mat &srcImg,Mat logoImage,int id)
+vector<int> getRandomArray(int totalNum,int returnNum)
 {
-	int ROIx, ROIy;
-	ROIx = 75 + 360 * (id % 3);
-	ROIy = 65 + 210 * (id / 3);
+	srand(getTickCount());
+	vector<int> input = *new vector<int>();
+	for (int i = 0; i < totalNum; i++)
+		input.push_back(i);
 
-	Mat srcROI = srcImg(Rect(ROIx, ROIy, 270, 160));
-	Mat mask = logoImage;//加载掩模（必须是灰度图）
-	cvtColor(logoImage, mask,CV_BGR2GRAY);
-	logoImage.copyTo(srcROI, mask);	//将掩膜拷贝到ROI
+	vector<int> output = *new vector<int>();
+
+	int end = totalNum;
+	for (int i = 0; i < returnNum; i++)
+	{
+		vector<int>::iterator iter = input.begin();
+		int num = random(end);
+		iter = iter + num;
+		output.push_back(*iter);
+		input.erase(iter);
+		end--;
+	}
+	return output;
 }
 
-// void  LinearBlending(Mat &srcImg, Mat logoImage, int id)
-// {
-// 	int ROIx, ROIy;
-// 	ROIx = 75 + 360 * (id % 3);
-// 	ROIy = 65 + 210 * (id / 3);
-// 
-// 	//【0】定义一些局部变量
-// 	double alphaValue = 0.5;
-// 	double betaValue;
-// 	Mat srcImage2, srcImage3, dstImage;
-// 
-// 	// 【1】读取图像 ( 两幅图片需为同样的类型和尺寸 )
-// 	srcImage2 = imread("mogu.jpg");
-// 	srcImage3 = imread("rain.jpg");
-// 
-// 	if (!srcImage2.data) { printf("读取srcImage2错误！ \n"); return false; }
-// 	if (!srcImage3.data) { printf("读取srcImage3错误！ \n"); return false; }
-// 
-// 	// 【2】进行图像混合加权操作
-// 	betaValue = (1.0 - alphaValue);
-// 	addWeighted(srcImage2, alphaValue, srcImage3, betaValue, 0.0, dstImage);
-// 
-// 	// 【3】显示原图窗口
-// 	imshow("<2>线性混合示例窗口【原图】", srcImage2);
-// 	imshow("<3>线性混合示例窗口【效果图】", dstImage);
-// }
+class Config
+{
+public:
+	Config(string path = "config.txt")
+	{
+		ifstream config(path);
+		if (!config.is_open())
+		{
+			cerr << "配置文件：" << path << "加载失败，请检查拼写！\n\n";
+			isOpen = false;
+		}
+		config >> imgPath;
+		string configStr;
+		config >> configStr;
+		scale = atof(configStr.substr(configStr.find_last_of("=") + 1, configStr.max_size()).c_str());
+		config >> configStr;
+		FONT = atoi(configStr.substr(configStr.find_last_of("=") + 1, configStr.max_size()).c_str());
+		config >> configStr;
+		fontThickness = atoi(configStr.substr(configStr.find_last_of("=") + 1, configStr.max_size()).c_str());
+		config >> configStr;
+		switchNum = atoi(configStr.substr(configStr.find_last_of("=") + 1, configStr.max_size()).c_str());
+	}
+
+	bool isOK()
+	{
+		if (!isOpen)
+			return false;
+		if (scale <= 0)
+		{
+			cerr << "窗口缩放比例：" << scale << "有误，必须大于0\n\n";
+			return false;
+		}
+		if (FONT > 7 && FONT != 16 || FONT < 0)
+		{
+			cerr << "字体：" << FONT << "不存在，请从0~7和16这9个数中选择\n\n";
+			return false;
+		}
+		if (fontThickness < 0) 
+		{
+			cerr << "字体粗细：" << fontThickness << "有误，不能小于0\n\n";
+			return false;
+		}
+		return true;
+	}
+	inline int fontSize()const{ return FONT == 1 || FONT == 5 ? 9 : 5; }
+	inline int getSwitchNum()
+	{ 
+		srand(getTickCount());
+		if (switchNum<=0)
+			return random(5)+1;
+		else
+			return switchNum;
+	}
+
+	string imgPath;
+	float scale;
+	int FONT;
+	int fontThickness;
+	
+private:
+	bool isOpen = true;
+	int switchNum;
+};
+
 
 void main()
 {
-	ifstream config("config.txt");
-	string imgPath;
-	config >> imgPath;
-
-	vector<Mat> people;
-	for (int i = 1; i < 4; ++i)
+	
+	Config config("config.txt");
+	if (!config.isOK())
 	{
-		stringstream ss;
-		ss << imgPath << "\\" << i << ".png";
-		Mat peopleImg = imread(ss.str());
-		resize(peopleImg, peopleImg, Size(270, 160));
-		people.push_back(peopleImg);
+		getchar();
+		return;
+	}
+	Mat background = imread(config.imgPath);
+	if (background.empty())
+	{
+		cerr << "背静图片加载出错！请检查文件" << config.imgPath <<"是否存在！\n"<< endl;
+		getchar();
+		return;
 	}
 
-	vector<Mat> car;
-	for (int i = 1; i < 10; ++i)
+	int WIDTH = background.cols;
+	int HEIGHT = background.rows;
+
+	vector<int> unorderArray = getRandomArray(9, 9);//乱序的1~9
+	vector<int> targetArray = getRandomArray(9, 5);//需要连续击中5个目标
+	int count = 0;
+	int aRound = config.getSwitchNum();
+	while ((uchar)waitKey(1450) != 27)
 	{
-		stringstream ss;
-		ss << imgPath << "\\图片" << i << ".png";
-		Mat carImg = imread(ss.str());
-		resize(carImg, carImg, Size(270, 160));
-		car.push_back(carImg);
-	}
-
-	int randomNum = 0;
-	int cartoonNum = 0;
-	randomNum = random(9);
-	int64 tinit = getTickCount();
-	srand(tinit);
-
-	Mat img(HEIGHT, WIDTH, CV_8UC3, Scalar(0, 0, 0));
-	string scaleStr;
-	config >> scaleStr;
-
-	float scale = atof(scaleStr.substr(scaleStr.find_last_of("=") + 1, scaleStr.max_size()).c_str());
-
-	while ((uchar)waitKey(180) != 27)
-	{
+		Mat out = background.clone();
+		
 		for (int i = 0; i < 9; ++i)
 		{
-			if (i!=randomNum)
-				ROI_AddImage(img, car[i], i);
-			else
-				ROI_AddImage(img, people[cartoonNum%3], i);
+			char dispIndex[2];
+			sprintf_s(dispIndex, "%i", unorderArray[i]);
+			Point2f txtPos = Point2f(155 + 360 * (i % 3), 350 + 210 * (i / 3));
+			putText(out, dispIndex, txtPos, config.FONT, config.fontSize(), Scalar(0, 0, 0), config.fontThickness);
 		}
 
-		int64 t = getTickCount() - tinit;
-		cartoonNum++;
-
-		if (1000.*t / getTickFrequency() > 1400)
+		unorderArray = getRandomArray(9, 9);
+		stringstream ss;
+		for (int i = 0; i < targetArray.size(); i++)
+			ss << targetArray[i];
+		putText(out, ss.str(), Point2f(325, 150), config.FONT, config.fontSize(), Scalar(0, 0, 0), config.fontThickness);
+		count++;
+		if (count == aRound)
 		{
-			cartoonNum = 0;
-			tinit = getTickCount();
-			randomNum = random(9);
-			cout << 1000.*t / getTickFrequency() << endl;
+			aRound = config.getSwitchNum();
+			targetArray = getRandomArray(9, 5);
+			count = 0;
 		}
-		Mat out;
-		resize(img, out, Size(scale*WIDTH, scale*HEIGHT));
-		imshow("九宫格", out);
+
+		Mat disp;
+		resize(out, disp, Size(config.scale*WIDTH, config.scale*HEIGHT));
+		imshow("九宫格", disp);
 	}
 }
